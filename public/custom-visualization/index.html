@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phoenix Temperature Visualization</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.plot.ly/plotly-3.0.1.min.js"></script>
+</head>
+<body>
+  <div class="controls">
+    <button id="line-chart-btn" class="chart-button active">Line Chart</button>
+    <button id="box-plot-btn" class="chart-button">Box Plot</button>
+    <button id="bar-graph-btn" class="chart-button">Bar Graph</button>
+  </div>
+  
+  <div id="loading-message" class="loading-message">Loading visualization...</div>
+  <div id="error-message" class="error-message" style="display: none;"></div>
+  <div id="plotly-container" class="plotly-graph-div"></div>
+  
+  <script src="visualization.js"></script>
+</body>
+</html>

@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phoenix Temperature Visualization</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+    #plotly-container {
+      width: 100%;
+      height: calc(100% - 60px);
+    }
+    .error-message {
+      color: red;
+      padding: 20px;
+      text-align: center;
+    }
+    .loading-message {
+      color: blue;
+      padding: 20px;
+      text-align: center;
+    }
+    .controls {
+      padding: 10px;
+      background-color: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      height: 40px;
+    }
+    .chart-button {
+      padding: 8px 16px;
+      background-color: #e0e0e0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .chart-button:hover {
+      background-color: #d0d0d0;
+    }
+    .chart-button.active {
+      background-color: #4A90E2;
+      color: white;
+      border-color: #3A80D2;
+    }
+  </style>
+  
+  <script src="https://cdn.plot.ly/plotly-3.0.1.min.js"></script>
+</head>
+<body>
+  <div class="controls">
+    <button id="line-chart-btn" class="chart-button active">Line Chart</button>
+    <button id="box-plot-btn" class="chart-button">Box Plot</button>
+    <button id="bar-graph-btn" class="chart-button">Bar Graph</button>
+  </div>
+  
+  <div id="loading-message" class="loading-message">Loading visualization...</div>
+  <div id="error-message" class="error-message" style="display: none;"></div>
+  <div id="plotly-container" class="plotly-graph-div"></div>
+  
+  <script>
+    // Add debugging to help identify issues
+    console.log("Visualization script started");
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log("DOM fully loaded");
+      
+      // Chart type state
+      let currentChartType = 'line';
+      let parsedData = null;
+      
+      // Button references
+      const lineChartBtn = document.getElementById('line-chart-btn');
+      const boxPlotBtn = document.getElementById('box-plot-btn');
+      const barGraphBtn = document.getElementById('bar-graph-btn');
+      
+      // Button event listeners
+      lineChartBtn.addEventListener('click', () => {
+        setActiveButton(lineChartBtn);
+        currentChartType = 'line';
+        if (parsedData) createVisualization(parsedData, currentChartType);
+      });
+      
+      boxPlotBtn.addEventListener('click', () => {
+        setActiveButton(boxPlotBtn);
+        currentChartType = 'box';
+        if (parsedData) createVisualization(parsedData, currentChartType);
+      });
+      
+      barGraphBtn.addEventListener('click', () => {
+        setActiveButton(barGraphBtn);
+        currentChartType = 'bar';
+        if (parsedData) createVisualization(parsedData, currentChartType);
+      });
+      
+      function setActiveButton(activeButton) {
+        // Remove active class from all buttons
+        [lineChartBtn, boxPlotBtn, barGraphBtn].forEach(btn => {
+          btn.classList.remove('active');
+        });
+        // Add active class to the clicked button
+        activeButton.classList.add('active');
+      }
+      
+      try {
+        // Check if Plotly is loaded
+        if (typeof Plotly === 'undefined') {
+          throw new Error("Plotly library not loaded");
+        }
+        console.log("Plotly library loaded successfully");
+        
+        // Load the CSV file with the temperature data
+        fetch('/temperature_data.csv')
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.text();
+          })
+          .then(csvText => {
+            console.log("CSV data loaded successfully");
+            parsedData = parseCSV(csvText);
+            console.log(`Parsed ${parsedData.length} data points`);
+            createVisualization(parsedData, currentChartType);
+          })
+          .catch(error => {
+            console.error("Error loading CSV:", error);
+            document.getElementById('loading-message').style.display = 'none';
+            document.getElementById('error-message').textContent = 
+              "Error loading temperature data: " + error.message + ". Please ensure temperature_data.csv is in the public folder.";
+            document.getElementById('error-message').style.display = 'block';
+          });
+        
+        function parseCSV(csv) {
+          const lines = csv.split('\n');
+          const headers = lines[0].split(',');
+          
+          // Log headers to help with debugging
+          console.log("CSV Headers:", headers);
+          
+          return lines.slice(1)
+            .filter(line => line.trim()) // Skip empty lines
+            .map(line => {
+              const values = line.split(',');
+              const row = {};
+              
+              headers.forEach((header, i) => {
+                const trimmedHeader = header.trim();
+                const value = values[i]?.trim();
+                row[trimmedHeader] = value;
+              });
+              
+              return row;
+            });
+        }
+        
+        function createVisualization(data, chartType) {
+          console.log(`Creating ${chartType} visualization with ${data.length} data points`);
+          
+          switch(chartType) {
+            case 'line':
+              createLineChart(data);
+              break;
+            case 'box':
+              createBoxPlot(data);
+              break;
+            case 'bar':
+              createBarGraph(data);
+              break;
+            default:
+              createLineChart(data);
+          }
+          
+          document.getElementById('loading-message').style.display = 'none';
+        }
+        
+        function createLineChart(data) {
+          // Process the data into the format needed for Plotly line chart
+          const traces = [];
+          
+          // Extract dates
+          const dates = data.map(row => row.Date);
+          
+          // Log first few dates to verify format
+          console.log("Sample dates:", dates.slice(0, 5));
+          
+          // Create traces for each temperature series
+          const columns = Object.keys(data[0] || {});
+          
+          if (columns.includes('Max2024')) {
+            traces.push({
+              x: dates,
+              y: data.map(row => parseFloat(row.Max2024)),
+              type: 'scatter',
+              mode: 'lines',
+              name: '2024 Max',
+              line: {color: '#FF5722', width: 2}
+            });
+          }
+          
+          if (columns.includes('Avg2024')) {
+            traces.push({
+              x: dates,
+              y: data.map(row => parseFloat(row.Avg2024)),
+              type: 'scatter',
+              mode: 'lines',
+              name: '2024 Avg',
+              line: {color: '#AB47BC', width: 2}
+            });
+          }
+          
+          if (columns.includes('Min2024')) {
+            traces.push({
+              x: dates,
+              y: data.map(row => parseFloat(row.Min2024)),
+              type: 'scatter',
+              mode: 'lines',
+              name: '2024 Min',
+              line: {color: '#2196F3', width: 2}
+            });
+          }
+          
+          if (columns.includes('Max1990')) {
+            traces.push({
+              x: dates,
+              y: data.map(row => parseFloat(row.Max1990)),
+              type: 'scatter',
+              mode: 'lines',
+              name: '1990 Max',
+              line: {color: '#FF9800', width: 2, dash: 'dot'}
+            });
+          }
+          
+          if (columns.includes('Avg1990')) {
+            traces.push({
+              x: dates,
+              y: data.map(row => parseFloat(row.Avg1990)),
+              type: 'scatter',
+              mode: 'lines',
+              name: '1990 Avg',
+              line: {color: '#9C27B0', width: 2, dash: 'dot'}
+            });
+          }
+          
+          if (columns.includes('Min1990')) {
+            traces.push({
+              x: dates,
+              y: data.map(row => parseFloat(row.Min1990)),
+              type: 'scatter',
+              mode: 'lines',
+              name: '1990 Min',
+              line: {color: '#03A9F4', width: 2, dash: 'dot'}
+            });
+          }
+          
+          const layout = {
+            title: 'Phoenix Temperature Data: 1990 vs 2024',
+            xaxis: {
+              title: 'Date',
+              tickformat: '%b %d',
+              tickangle: -45
+            },
+            yaxis: {
+              title: 'Temperature (°F)'
+            },
+            hovermode: 'closest',
+            legend: {
+              orientation: 'h',
+              y: -0.2
+            },
+            margin: {
+              b: 100,
+              l: 60,
+              r: 40,
+              t: 80
+            }
+          };
+          
+          Plotly.newPlot('plotly-container', traces, layout, {responsive: true});
+        }
+        
+        function createBoxPlot(data) {
+          // Process data for box plot
+          // Group data by month for box plots
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const monthData = {};
+          
+          // Initialize arrays for each month and temperature type
+          months.forEach(month => {
+            monthData[month] = {
+              Max2024: [],
+              Avg2024: [],
+              Min2024: [],
+              Max1990: [],
+              Avg1990: [],
+              Min1990: []
+            };
+          });
+          
+          // Group data by month
+          data.forEach(row => {
+            try {
+              const date = new Date(row.Date);
+              if (isNaN(date.getTime())) {
+                console.warn(`Invalid date: ${row.Date}`);
+                return;
+              }
+              
+              const month = months[date.getMonth()];
+              
+              if (row.Max2024) monthData[month].Max2024.push(parseFloat(row.Max2024));
+              if (row.Avg2024) monthData[month].Avg2024.push(parseFloat(row.Avg2024));
+              if (row.Min2024) monthData[month].Min2024.push(parseFloat(row.Min2024));
+              if (row.Max1990) monthData[month].Max1990.push(parseFloat(row.Max1990));
+              if (row.Avg1990) monthData[month].Avg1990.push(parseFloat(row.Avg1990));
+              if (row.Min1990) monthData[month].Min1990.push(parseFloat(row.Min1990));
+            } catch (e) {
+              console.warn(`Error processing row: ${JSON.stringify(row)}`, e);
+            }
+          });
+          
+          const traces = [];
+          
+          // Create box plots for each temperature type
+          const temperatureTypes = ['Max2024', 'Avg2024', 'Min2024', 'Max1990', 'Avg1990', 'Min1990'];
+          const colors = {
+            Max2024: '#FF5722',
+            Avg2024: '#AB47BC',
+            Min2024: '#2196F3',
+            Max1990: '#FF9800',
+            Avg1990: '#9C27B0',
+            Min1990: '#03A9F4'
+          };
+          
+          temperatureTypes.forEach(type => {
+            const monthValues = [];
+            const monthLabels = [];
+            
+            months.forEach(month => {
+              const values = monthData[month][type];
+              if (values.length > 0) {
+                monthValues.push(...values);
+                monthLabels.push(...Array(values.length).fill(month));
+              }
+            });
+            
+            // Only add trace if we have data
+            if (monthValues.length > 0) {
+              traces.push({
+                y: monthValues,
+                x: monthLabels,
+                type: 'box',
+                name: type,
+                marker: {
+                  color: colors[type]
+                },
+                boxmean: true
+              });
+            }
+          });
+          
+          const layout = {
+            title: 'Monthly Temperature Distribution: 1990 vs 2024',
+            xaxis: {
+              title: 'Month',
+              categoryorder: 'array',
+              categoryarray: months
+            },
+            yaxis: {
+              title: 'Temperature (°F)'
+            },
+            boxmode: 'group',
+            legend: {
+              orientation: 'h',
+              y: -0.2
+            },
+            margin: {
+              b: 100,
+              l: 60,
+              r: 40,
+              t: 80
+            }
+          };
+          
+          Plotly.newPlot('plotly-container', traces, layout, {responsive: true});
+        }
+        
+        function createBarGraph(data) {
+          // Process data for bar graph
+          // Group data by month for comparison
+          const monthlyAvg = {};
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          
+          // Initialize
+          months.forEach(month => {
+            monthlyAvg[month] = {
+              Max2024: [],
+              Avg2024: [],
+              Min2024: [],
+              Max1990: [],
+              Avg1990: [],
+              Min1990: []
+            };
+          });
+          
+          // Group by month
+          data.forEach(row => {
+            try {
+              const date = new Date(row.Date);
+              if (isNaN(date.getTime())) {
+                console.warn(`Invalid date: ${row.Date}`);
+                return;
+              }
+              
+              const month = months[date.getMonth()];
+              
+              if (row.Max2024) monthlyAvg[month].Max2024.push(parseFloat(row.Max2024));
+              if (row.Avg2024) monthlyAvg[month].Avg2024.push(parseFloat(row.Avg2024));
+              if (row.Min2024) monthlyAvg[month].Min2024.push(parseFloat(row.Min2024));
+              if (row.Max1990) monthlyAvg[month].Max1990.push(parseFloat(row.Max1990));
+              if (row.Avg1990) monthlyAvg[month].Avg1990.push(parseFloat(row.Avg1990));
+              if (row.Min1990) monthlyAvg[month].Min1990.push(parseFloat(row.Min1990));
+            } catch (e) {
+              console.warn(`Error processing row: ${JSON.stringify(row)}`, e);
+            }
+          });
+          
+          // Calculate monthly averages
+          months.forEach(month => {
+            for (const key in monthlyAvg[month]) {
+              const values = monthlyAvg[month][key];
+              if (values.length > 0) {
+                monthlyAvg[month][key] = values.reduce((sum, val) => sum + val, 0) / values.length;
+              } else {
+                monthlyAvg[month][key] = null;
+              }
+            }
+          });
+          
+          const traces = [];
+          
+          // Create bar traces for 2024 data
+          traces.push({
+            x: months,
+            y: months.map(month => monthlyAvg[month].Max2024),
+            name: '2024 Max',
+            type: 'bar',
+            marker: {
+              color: '#FF5722'
+            }
+          });
+          
+          traces.push({
+            x: months,
+            y: months.map(month => monthlyAvg[month].Avg2024),
+            name: '2024 Avg',
+            type: 'bar',
+            marker: {
+              color: '#AB47BC'
+            }
+          });
+          
+          traces.push({
+            x: months,
+            y: months.map(month => monthlyAvg[month].Min2024),
+            name: '2024 Min',
+            type: 'bar',
+            marker: {
+              color: '#2196F3'
+            }
+          });
+          
+          // Create bar traces for 1990 data
+          traces.push({
+            x: months,
+            y: months.map(month => monthlyAvg[month].Max1990),
+            name: '1990 Max',
+            type: 'bar',
+            marker: {
+              color: '#FF9800',
+              pattern: {
+                shape: '/'
+              }
+            }
+          });
+          
+          traces.push({
+            x: months,
+            y: months.map(month => monthlyAvg[month].Avg1990),
+            name: '1990 Avg',
+            type: 'bar',
+            marker: {
+              color: '#9C27B0',
+              pattern: {
+                shape: '/'
+              }
+            }
+          });
+          
+          traces.push({
+            x: months,
+            y: months.map(month => monthlyAvg[month].Min1990),
+            name: '1990 Min',
+            type: 'bar',
+            marker: {
+              color: '#03A9F4',
+              pattern: {
+                shape: '/'
+              }
+            }
+          });
+          
+          const layout = {
+            title: 'Monthly Average Temperatures: 1990 vs 2024',
+            xaxis: {
+              title: 'Month',
+              categoryorder: 'array',
+              categoryarray: months
+            },
+            yaxis: {
+              title: 'Temperature (°F)'
+            },
+            barmode: 'group',
+            legend: {
+              orientation: 'h',
+              y: -0.2
+            },
+            margin: {
+              b: 100,
+              l: 60,
+              r: 40,
+              t: 80
+            }
+          };
+          
+          Plotly.newPlot('plotly-container', traces, layout, {responsive: true});
+        }
+        
+      } catch (err) {
+        console.error("Error in visualization script:", err);
+        document.getElementById('loading-message').style.display = 'none';
+        document.getElementById('error-message').style.display = 'block';
+        document.getElementById('error-message').textContent = "Error in visualization script: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
